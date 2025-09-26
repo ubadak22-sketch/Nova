@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NOVA Prototype V1 — WhatsApp Style</title>
+<style>
+:root{
+  --bg:#e9efe9;
+  --chat-bg:#f6f6f6;
+  --you-bg:#000;
+  --you-color:#fff;
+  --bot-bg:#e6e6e6;
+  --bot-color:#000;
+  --accent:#06b6d4;
+  --muted:#6b6b6b;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,Roboto,system-ui,Arial,sans-serif;background:var(--bg)}
+.app{height:100vh;display:flex;flex-direction:column;max-height:100vh}
+header{height:56px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #e3e3e3;background:#fff}
+h1{font-size:16px;margin:0}
+.top-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tiny{font-size:13px;color:var(--muted)}
+#chatWrap{flex:1;overflow:auto;background:var(--chat-bg);padding:12px 14px}
+.messages{display:flex;flex-direction:column;gap:6px;max-width:920px;margin:0 auto}
+.msg{max-width:78%;padding:10px 14px;border-radius:18px;word-break:break-word;white-space:pre-wrap;opacity:0;transform:translateY(8px);transition:all .22s ease}
+.msg.show{opacity:1;transform:translateY(0)}
+.msg.you{margin-left:auto;background:var(--you-bg);color:var(--you-color);box-shadow:0 1px 4px rgba(0,0,0,0.15)}
+.msg.bot{margin-right:auto;background:var(--bot-bg);color:var(--bot-color);box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+.meta{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);opacity:.9}
+.timestamp{font-size:11px;color:var(--muted)}
+.tick{color:var(--accent);margin-left:6px;font-size:12px}
+.composer{display:flex;gap:8px;padding:10px;background:#fff;border-top:1px solid #e3e3e3;align-items:center;position:sticky;bottom:0}
+textarea#input{flex:1;min-height:44px;max-height:140px;padding:10px;border-radius:22px;border:1px solid #ddd;resize:none;font-size:14px}
+button{border:none;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:15px}
+#micBtn{background:#f0f0f0;border:1px solid #ddd;padding:8px;border-radius:10px}
+#send{background:var(--accent);color:#fff;padding:8px 12px;border-radius:10px}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal{width:360px;background:#fff;border-radius:10px;padding:14px;box-shadow:0 10px 40px rgba(0,0,0,0.18)}
+.status{font-size:13px;color:var(--muted);text-align:center;margin:6px 0}
+.memory-count{background:#eaf8fb;padding:4px 8px;border-radius:6px;font-size:12px;color:var(--accent)}
+.typing{display:inline-block;margin:8px 0;padding:10px 14px;border-radius:18px;background:var(--bot-bg);color:var(--bot-color);max-width:58%;font-style:italic;opacity:0;transform:translateY(8px);transition:all .22s ease}
+.typing.show{opacity:1;transform:translateY(0)}
+.dots{display:flex;gap:6px;margin-top:6px}
+.dot{width:7px;height:7px;background:#012;border-radius:50%;animation:blink 1.2s infinite}
+.dot:nth-child(1){animation-delay:0s}
+.dot:nth-child(2){animation-delay:.18s}
+.dot:nth-child(3){animation-delay:.36s}
+@keyframes blink{0%,80%,100%{opacity:0}40%{opacity:1}}
+@media(max-width:520px){
+  .msg{max-width:86%}
+  .modal{width:92%}
+}
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="Nova AI">
+  <header>
+    <h1>NOVA Prototype V1</h1>
+    <div class="top-right">
+      <div class="tiny">Owner: UBADA</div>
+      <div class="memory-count" id="memoryCount">Memory: 0</div>
+      <button id="openSettings" class="settings-btn" title="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <div id="chatWrap">
+    <div class="messages" id="messages"></div>
+  </div>
+
+  <div class="composer">
+    <button id="micBtn" title="Speak">🎤</button>
+    <textarea id="input" placeholder="Ask Nova... (teach: question → answer)"></textarea>
+    <button id="send">Send</button>
+  </div>
+</div>
+
+<div id="modal" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" role="document">
+    <h3>Settings</h3>
+    <div class="tiny" style="margin-bottom:8px">Import / Export memory. Reply language and auto-send after voice.</div>
+    <div style="margin:8px 0"><button id="exportBtn" style="width:100%;background:var(--accent);color:#fff;padding:8px;border-radius:8px">Export Memory</button></div>
+    <div style="margin:8px 0"><input type="file" id="importFile" accept=".json" style="display:none"><button id="importBtn" style="width:100%;padding:8px;border-radius:8px">Import Memory</button></div>
+    <label class="tiny">Reply language</label>
+    <select id="langSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid #ddd;margin-top:6px">
+      <option value="auto">Auto (keep original)</option>
+      <option value="en">English</option>
+      <option value="hi">Hindi</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+    </select>
+    <div style="margin-top:10px"><label><input type="checkbox" id="autoSendVoice"> Auto-send after voice capture</label></div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button id="closeSettings" style="flex:1;padding:8px;border-radius:8px">Close</button>
+      <button id="clearMemory" style="flex:1;padding:8px;border-radius:8px;background:#f44336;color:#fff;border:none">Clear Memory</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "nova_prototype_v1_memory";
+let memoryMap = {}; // loaded below
+const messagesEl = document.getElementById('messages');
+const memoryCountEl = document.getElementById('memoryCount');
+
+function now(){ return new Date().toISOString(); }
+function norm(s){ return String(s||"").trim().toLowerCase().replace(/\s+/g," "); }
+function loadMemory(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {};
+}
+function saveMemory(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryMap)); }catch(e){} }
+function updateMemoryCount(){ memoryCountEl.textContent = `Memory: ${Object.keys(memoryMap).length}`; }
+
+function formatTime(d=new Date()){
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+function createMsgEl(sender, text, withTicks=false){
+  const div = document.createElement('div');
+  div.className = 'msg ' + (sender==='you' ? 'you' : 'bot');
+  const content = document.createElement('div');
+  content.textContent = text;
+  div.appendChild(content);
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const ts = document.createElement('div');
+  ts.className = 'timestamp';
+  ts.textContent = formatTime();
+  meta.appendChild(ts);
+  if(withTicks){
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.textContent = '✓✓';
+    meta.appendChild(tick);
+  }
+  div.appendChild(meta);
+  setTimeout(()=> div.classList.add('show'), 12);
+  return div;
+}
+function appendMessage(sender, text){
+  const el = createMsgEl(sender, text, sender==='bot');
+  messagesEl.appendChild(el);
+  messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+}
+
+let typingEl = null;
+function showTyping(){
+  if(typingEl) return;
+  typingEl = document.createElement('div');
+  typingEl.className = 'typing';
+  typingEl.textContent = 'Nova is typing';
+  const dots = document.createElement('div'); dots.className = 'dots';
+  for(let i=0;i<3;i++){ const d = document.createElement('div'); d.className='dot'; dots.appendChild(d); }
+  typingEl.appendChild(dots);
+  messagesEl.appendChild(typingEl);
+  setTimeout(()=> typingEl.classList.add('show'), 8);
+  messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+}
+function hideTyping(){ if(!typingEl) return; typingEl.remove(); typingEl=null; }
+
+function tokenize(s){ return norm(s).split(' ').filter(Boolean); }
+function overlapScore(a,b){
+  const A = new Set(tokenize(a)); const B = new Set(tokenize(b));
+  if(!A.size || !B.size) return 0;
+  let common = 0; A.forEach(x=>{ if(B.has(x)) common++; });
+  return common / Math.max(A.size,B.size);
+}
+function retrieveBest(q, threshold=0.35){
+  const docs = Object.entries(memoryMap);
+  if(!docs.length) return null;
+  let best = null, bestScore = 0;
+  for(const [k,v] of docs){
+    const s = overlapScore(q, v.q);
+    if(s > bestScore){ bestScore = s; best = v; }
+  }
+  return bestScore >= threshold ? {mem:best, score:bestScore} : null;
+}
+
+function tryQuickAnswer(text){
+  const lower = text.toLowerCase().trim();
+  if(/^[0-9+\-*/().,^% \s]+$/.test(text) || lower.startsWith('math:')){
+    try{
+      const expr = lower.startsWith('math:') ? text.slice(5).trim() : text;
+      if(!/[^0-9+\-*/().,^%\s]/.test(expr)){
+        const safe = expr.replace(/\^/g,'**').replace(/%/g,'/100');
+        // eslint-disable-next-line no-eval
+        const v = eval(safe);
+        return `Math result: ${v}`;
+      }
+    }catch(e){}
+  }
+  if(lower.includes('e=mc') || lower.includes('e equals m')) return 'E = m·c². Energy equals mass × speed of light².';
+  if(lower.includes('photosynthesis')) return 'Photosynthesis: plants convert sunlight into chemical energy.';
+  if(lower.includes('dna')) return 'DNA stores genetic instructions.';
+  if(lower.includes('convert') && lower.includes('to')){
+    const km = lower.match(/(\d+)\s*km/);
+    if(km && lower.includes('to m')) return `${Number(km[1]) * 1000} m`;
+  }
+  return null;
+}
+
+/* ---------- Preload fixed Q→A + greetings ---------- */
+function preloadMemory() {
+  memoryMap = loadMemory();
+  if(Object.keys(memoryMap).length >= 3000){ updateMemoryCount(); return; }
+  const tips = [
+    "Boil rice with 2x water and simmer covered until done.",
+    "Steep tea leaves in hot water; add milk and sugar to taste.",
+    "Remove fresh stains with cold water and detergent quickly.",
+    "Store onions in a cool, dry, ventilated place.",
+    "Restart your phone if it becomes slow.",
+    "Back up important files regularly to cloud or external drive.",
+    "Use strong passwords and enable two-factor authentication.",
+    "Slice onions under running water to reduce tears.",
+    "Study using 25m focus + 5m break (Pomodoro).",
+    "Keep a short daily to-do list and finish top 3 tasks first."
+  ];
+  let i=1;
+  while(Object.keys(memoryMap).length < 1000){
+    const q=`everyday life question ${i}`;
+    const a=`Tip ${i}: ${tips[i % tips.length]}`;
+    memoryMap[norm(q)]={q,q,a:a,ts:now()};
+    i++; if(i>12000) break;
+  }
+
+  const greetings = ["Hi","Hello","Hey","Hola","Bonjour","Ciao","Hallo","Olá","Namaste","Salaam","Konnichiwa","Nǐ hǎo","Annyeong","Merhaba","Shalom","Sawubona","Hej","Szia","Salve","Yassas"];
+  let j=1;
+  while(Object.keys(memoryMap).length < 3000){
+    const
